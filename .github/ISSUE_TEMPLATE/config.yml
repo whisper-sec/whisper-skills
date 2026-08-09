@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Data problem in the graph (false positive, wrong attribution)
+    url: https://www.whisper.security/docs/support
+    about: Wrong data is a service issue, not a skills issue. Report it here or with the connector's feedback tool.
+  - name: Security vulnerability
+    url: https://github.com/whisper-sec/whisper-skills/blob/main/SECURITY.md
+    about: Email security@whisper.security. Do not open a public issue.

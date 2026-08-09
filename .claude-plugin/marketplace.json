@@ -1,0 +1,25 @@
+{
+  "name": "whisper-security",
+  "description": "Whisper Security plugins for Claude Code — investigation playbooks for the WhisperGraph internet-infrastructure graph.",
+  "owner": {
+    "name": "Whisper Security",
+    "email": "support@whisper.security",
+    "url": "https://www.whisper.security"
+  },
+  "plugins": [
+    {
+      "name": "whisper-graph",
+      "source": "./",
+      "category": "security",
+      "tags": [
+        "threat-intelligence",
+        "dfir",
+        "osint",
+        "dns",
+        "bgp",
+        "whois",
+        "brand-protection"
+      ]
+    }
+  ]
+}

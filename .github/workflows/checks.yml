@@ -1,0 +1,135 @@
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Nightly. This is the job that catches the day the server changes under us.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Keyed on the event as well as the ref, so a merge to main cannot cancel the nightly
+  # run — a cancelled job reports "cancelled", not "failure", and the drift job below
+  # would never fire. Only pull-request runs supersede each other.
+  group: checks-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  offline:
+    # No network. A service outage can never turn a contributor's pull request red for a
+    # reason they cannot fix.
+    name: offline checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Agent Skills frontmatter
+        run: python3 scripts/check_frontmatter.py skills
+      - name: untrusted-data block is identical everywhere
+        run: python3 scripts/check_safety_block.py skills agents
+      - name: manifests agree
+        run: python3 scripts/check_manifests.py
+      - name: no graph statistics in prose
+        run: python3 scripts/check_no_counts.py skills agents commands README.md
+      - name: relative links resolve
+        run: python3 scripts/check_links.py --offline .
+
+  validator:
+    # The official validator is what the plugin review pipeline runs, so run it here too
+    # rather than describing it in a document nobody executes.
+    name: official plugin validator
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate --strict .claude-plugin/plugin.json
+      - run: claude plugin validate --strict .
+
+  live:
+    # Public endpoints only, with no credentials, so this runs identically on a fork's
+    # pull request. That is deliberate: an outside contributor must be able to get the
+    # same verdict a maintainer gets.
+    #
+    # Each script exits 0 clean, 1 on a real defect, and 2 when the endpoint could not be
+    # reached. A 2 is inconclusive, not a failure, and must never open a drift issue.
+    name: live checks (no credentials)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      drifted: ${{ steps.verdict.outputs.drifted }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - id: verdict
+        run: |
+          drifted=false
+          fail=0
+          run() {
+            echo "::group::$1"; shift
+            set +e; "$@"; code=$?; set -e
+            echo "::endgroup::"
+            case $code in
+              0) ;;
+              2) echo "::notice::$* was inconclusive (endpoint unreachable or throttled)" ;;
+              *) drifted=true; fail=1 ;;
+            esac
+          }
+          run "tool, resource and workflow surface" \
+              python3 scripts/check_surface.py skills agents commands README.md
+          run "Cypher blocks plan against the live graph" \
+              python3 scripts/check_cypher.py skills
+          run "external links resolve" \
+              python3 scripts/check_links.py .
+          echo "drifted=$drifted" >> "$GITHUB_OUTPUT"
+          exit $fail
+
+  drift:
+    # Nightly only, and only when a live check reported a real mismatch rather than an
+    # outage. A failure here means the server moved and the repo is now making a false
+    # claim.
+    name: open a drift issue
+    needs: [live]
+    if: always() && github.event_name == 'schedule' && needs.live.outputs.drifted == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: file or update the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Drift: the live WhisperGraph surface no longer matches this repo"
+          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
+          body="The nightly live check reported a real mismatch. Something this repo names — an MCP tool, a resource, a workflow slug, or a Cypher pattern — no longer matches the live server.
+
+          Run: $RUN_URL
+
+          Reproduce locally, with no credentials:
+
+              python3 scripts/check_surface.py skills agents commands README.md
+              python3 scripts/check_cypher.py skills
+
+          A removed or renamed tool is a MAJOR release. Fix the skills; do not suppress the check."
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --label "drift" --body "$body"
+          fi

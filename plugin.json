@@ -1,0 +1,23 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "whisper-graph",
+  "version": "2.0.0",
+  "description": "Investigation playbooks for the WhisperGraph internet-infrastructure graph: indicator triage that reads coverage before it reports a verdict, bulk triage over a SIEM export, Cypher that passes the server's validator, and brand-protection sweeps.",
+  "author": {
+    "name": "Whisper Security",
+    "url": "https://www.whisper.security"
+  },
+  "homepage": "https://www.whisper.security/docs/ai/mcp/skills",
+  "repository": "https://github.com/whisper-sec/whisper-skills",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "threat-intelligence",
+    "dfir",
+    "osint",
+    "dns",
+    "bgp",
+    "whois",
+    "brand-protection"
+  ]
+}
