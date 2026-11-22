@@ -19,5 +19,34 @@
     "bgp",
     "whois",
     "brand-protection"
-  ]
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "WhisperGraph",
+        "shortDescription": "Investigate domains, IPs, ASNs",
+        "longDescription": "WhisperGraph connects ChatGPT and Codex to a graph of internet infrastructure: domains and hostnames, DNS records, IP addresses and prefixes, autonomous systems and BGP routes, registrars and registration records, certificates, email security records, threat-intelligence listings, and the physical layer of data centers, internet exchanges and submarine cables. The plugin adds investigation playbooks on top of the read-only WhisperGraph connector.\n\nUse it to:\n- Triage an IP address, domain, hostname, URL, ASN, CVE or file hash, and see how much of the evidence was available before trusting a verdict.\n- Map the hosting, network, name servers, mail setup and certificates behind a domain.\n- Triage a pasted list of indicators, such as a SIEM export.\n- Find look-alike domains of a brand and check how each one is set up.\n- Write Cypher queries against the graph that pass the server's validator.\n\nIt is built for security analysts, incident responders, threat-intelligence and brand-protection teams, and engineers who need to know what a domain or address connects to.\n\nLimits: every tool is read-only, and nothing is written to the graph. Results describe infrastructure as observed and can lag recent changes. An empty result is not proof that something is safe, so the playbooks report coverage and keep gaps visible. Some results include contact details published in domain registration records. A Whisper account is required, sign-in uses OAuth, and access depends on the signed-in account.",
+        "developerName": "Whisper Security",
+        "category": "Security",
+        "capabilities": [
+          "Score indicators",
+          "Map infrastructure",
+          "Triage indicator lists",
+          "Query the graph with Cypher"
+        ],
+        "websiteURL": "https://www.whisper.security",
+        "supportURL": "https://www.whisper.security/contact-us",
+        "privacyPolicyURL": "https://www.whisper.security/privacy-policy",
+        "termsOfServiceURL": "https://www.whisper.security/terms-conditions",
+        "defaultPrompt": [
+          "Triage this IP address and show the evidence behind the verdict: 8.8.8.8",
+          "Map the hosting, network and mail setup behind whisper.security",
+          "Find look-alike domains of whisper.security and check how they are set up"
+        ],
+        "brandColor": "#8A5CC7",
+        "composerIcon": "./assets/whisper-logo-512.png",
+        "logo": "./assets/whisper-logo-512.png"
+      }
+    }
+  }
 }

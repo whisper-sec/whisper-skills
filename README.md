@@ -80,7 +80,9 @@ skills/           four skills, the single source of truth. Agent Skills spec, si
 agents/           one Claude Code subagent: bulk triage in an isolated context
 commands/         /whisper-setup — connect the connector, or diagnose it
 scripts/          the checks that keep this repo true. No dependencies, no credentials
-plugin.json       Agent Plugins 1.0.0, for cross-vendor plugin surfaces
+plugin.json       Agent Plugins 1.0.0, for cross-vendor plugin surfaces; also carries the
+                  ChatGPT and Codex listing fields
+mcp.json          the connector, declared for ChatGPT and Codex
 .claude-plugin/   the Claude Code plugin and marketplace manifests
 ```
 
