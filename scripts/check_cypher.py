@@ -8,8 +8,13 @@ fork's pull request, which has no secrets.
 Two layers, because one is not enough:
 
   1. EXPLAIN over the public API — catches syntax errors and write clauses, and flags
-     any query the server had to rewrite. A rewrite is a FAILURE here: the shipped
-     pattern is wrong even though the server was forgiving about it.
+     any query the server had to rewrite or qualify. A rewrite or an advisory is a
+     FAILURE here: the shipped pattern is wrong even though the server was forgiving
+     about it. One family is exempt, because it describes the caller rather than the
+     pattern: the engine qualifies any statement that names contact data when the
+     caller lacks the contact-data entitlement, and a keyless check never has it. The
+     plan still comes back, so such a block is checked like any other and listed as
+     needing the entitlement to run.
   2. Token cross-check against the live label and relationship-type listings. EXPLAIN
      will happily plan a query naming an edge type or a property that does not exist,
      so layer 1 alone would pass a pattern that silently returns nothing forever.
@@ -45,6 +50,12 @@ UNREACHABLE = 2
 # from the relationship-type listing. Keep this list short, and re-check it when the
 # nightly job reports drift. Last confirmed: 2026-08-09.
 EXTRA_EDGES = {"PARENT_OF"}
+
+# Advisories about the caller's plan, not the pattern. The engine attaches them to any
+# statement that names contact data (an EMAIL or PHONE label, a HAS_EMAIL or HAS_PHONE
+# edge) when the caller lacks the contact-data entitlement, which a keyless check never
+# has. Keep this to entitlement kinds: every other advisory still fails the block.
+ENTITLEMENT_KINDS = {"contact-data-not-entitled", "contact-data-withheld"}
 
 BLOCK_RE = re.compile(r"```cypher(-illustrative)?\n(.*?)```", re.S)
 LABEL_RE = re.compile(r"(?<![\w$])\(\s*\w*\s*:([A-Z][A-Z0-9_|]*)")
@@ -105,7 +116,8 @@ def live_schema():
 
 
 def check_block(path, index, cypher, labels, edges):
-    fails = []
+    """Return (fails, notes) for one block. A note never fails the build."""
+    fails, notes = [], []
     for group in LABEL_RE.findall(cypher):
         for label in group.split("|"):
             if label not in labels:
@@ -116,17 +128,31 @@ def check_block(path, index, cypher, labels, edges):
                 fails.append("%s block#%d: unknown edge type [:%s]" % (path, index, edge))
 
     result = api("EXPLAIN " + cypher.strip().rstrip(";"))
-    if result.get("rewrittenQuery") or result.get("advisories"):
-        advisories = result.get("advisories") or [{"message": "the query was rewritten"}]
-        for advisory in advisories:
-            message = advisory.get("message", "") if isinstance(advisory, dict) else advisory
-            fails.append(
-                "%s block#%d: the server rewrote this query — %s" % (path, index, str(message)[:160])
-            )
+    if result.get("rewrittenQuery"):
+        fails.append(
+            "%s block#%d: the server rewrote this query to: %s"
+            % (path, index, str(result["rewrittenQuery"])[:160])
+        )
+    entitlement = set()
+    for advisory in result.get("advisories") or []:
+        kind = advisory.get("kind") if isinstance(advisory, dict) else None
+        if kind in ENTITLEMENT_KINDS:
+            entitlement.add(kind)
+            continue
+        message = advisory.get("message", "") if isinstance(advisory, dict) else advisory
+        fails.append(
+            "%s block#%d: server advisory %s: %s"
+            % (path, index, kind or "with no kind", str(message)[:160])
+        )
     if "rows" not in result and "columns" not in result:
         detail = result.get("detail") or result.get("title") or json.dumps(result)[:200]
         fails.append("%s block#%d: %s" % (path, index, detail))
-    return fails
+    elif entitlement:
+        notes.append(
+            "%s block#%d: planned; running it needs the contact-data entitlement (%s)"
+            % (path, index, ", ".join(sorted(entitlement)))
+        )
+    return fails, notes
 
 
 def markdown_files(paths):
@@ -150,7 +176,7 @@ def main(paths):
         return UNREACHABLE
 
     print("live schema read: labels and relationship types (extra: %s)" % sorted(EXTRA_EDGES))
-    fails, checked, skipped = [], 0, 0
+    fails, notes, checked, skipped = [], [], 0, 0
     for path in markdown_files(paths):
         text = open(path, encoding="utf-8", errors="replace").read()
         for index, (illustrative, body) in enumerate(BLOCK_RE.findall(text), 1):
@@ -159,13 +185,17 @@ def main(paths):
                 continue
             checked += 1
             try:
-                fails += check_block(path, index, body, labels, edges)
+                block_fails, block_notes = check_block(path, index, body, labels, edges)
             except Unreachable as exc:
                 print("UNREACHABLE: stopped at %s block#%d — %s" % (path, index, exc))
                 print("This is an outage or a rate limit, not a defect in this repository.")
                 return UNREACHABLE
+            fails += block_fails
+            notes += block_notes
 
     print("checked %d block(s), skipped %d illustrative" % (checked, skipped))
+    for n in notes:
+        print("NOTE", n)
     for f in fails:
         print("FAIL", f)
     print("%d failure(s)" % len(fails))
