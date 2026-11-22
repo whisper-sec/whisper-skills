@@ -34,9 +34,6 @@ NOT_TOOL_NAMES = {
     "host_class", "vendor_id", "canonical_name", "is_canonical", "sub_labels",
     "k_bucket", "observation_id", "identifier_kind", "promotion_state",
     "deadline_hit", "no_atlas_match", "nearest_known_vendors", "budget_ms",
-    # submit identifier kinds
-    "host_hash_rotating", "url_path_hash", "cert_sha256", "cert_ja3_hash",
-    "cert_ja4_hash", "cert_jarm", "whois_pattern", "submit_write",
     # config, headers and OAuth error codes
     "api_key", "user_agent", "content_type", "x_api_key", "allowed_tools",
     "offline_access", "page_size", "core_symlinks", "insufficient_scope",

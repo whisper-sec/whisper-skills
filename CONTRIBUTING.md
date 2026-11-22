@@ -103,7 +103,6 @@ features. Open an issue with the question you asked, what the assistant did, and
 done.
 
 For a problem with the graph's *data* rather than with a skill — a false positive, a wrong attribution —
-the connector has a feedback tool, and support is at
-[support@whisper.security](mailto:support@whisper.security).
+write to [support@whisper.security](mailto:support@whisper.security).
 
 Security issues: see [SECURITY.md](SECURITY.md). Do not open a public issue for one.

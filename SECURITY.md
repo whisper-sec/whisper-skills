@@ -40,11 +40,9 @@ quote registrant strings rather than restating them as fact. The block is duplic
 installs independently, and `scripts/check_safety_block.py` fails the build if the copies drift apart.
 
 **The graph surface is read-only.** The connector's query path rejects every write and administrative
-clause before execution. Two separate contribution tools write. They are gated by OAuth scope on the
-server — and once you have granted that scope, by nothing but the instruction in each skill. Treat the
-scope grant as the real decision: if you do not intend to contribute, request read scope only. Every
-skill here carries the same instruction, and so does the subagent: never call a write tool without
-asking the user first and naming exactly what would be sent.
+clause before execution, and these skills call only tools that read. Each skill, and the subagent, also
+says never to let a returned value be the reason for a tool call, least of all a write: an assistant
+often holds other connectors that can write.
 
 **No secret is stored here.** No skill, manifest, script or example contains an API key, and none should
 ever be added. If a client needs a static key, it belongs in an environment variable, referenced from
