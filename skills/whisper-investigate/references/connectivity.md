@@ -23,7 +23,6 @@ server-side, and returns in milliseconds. Whatever it does tells you which row b
 |---|---|---|
 | The tool does not appear at all | The connector was never added, or the client is holding a stale session | Add `https://mcp.whisper.security` as a custom connector, or run `/whisper-setup` in Claude Code. If it was added, disconnect and reconnect — a stale session is the usual cause of a wrong tool list |
 | `401`, `unauthorized`, `invalid token` | The connector is added but the sign-in never completed | Settings → Connectors → *whisper-graph* → Connect, and let the browser reach the "you can close this window" page |
-| `insufficient_scope` on a submit call | The token was granted read scope only | Expected and correct. The read surface is unaffected. Do not retry |
 | The tool list has the wrong number of entries | Almost always a client holding an older session | Disconnect and reconnect. The advertised surface does not vary by plan, tier, or setting |
 | Everything works, but a workflow never returns | The call ran past the client's tool-call timeout | Use a lighter workflow. `indicator-enrichment` answers most of what the deepest dive answers, in seconds |
 | The client shows tool names prefixed `mcp__…__` | Normal. Some clients namespace MCP tools | Ignore the prefix; the tool is the last segment |

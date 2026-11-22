@@ -28,6 +28,9 @@ rewrite, not an edit.
 - **Removed the sixty-pattern cookbook and the bundled schema dump.** Both were snapshots of a moving
   target and neither was tested. Replaced by a maintained pattern set that CI plans against the live
   graph on every change, and by an instruction to read the schema live.
+- **Removed the two contribution tools.** The skills, the subagent and the docs described two connector
+  tools that write, one to contribute an indicator and one to send feedback. The connector no longer
+  has either, so the instructions about them are gone, and a data problem goes to support.
 
 ### Added
 

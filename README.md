@@ -117,8 +117,8 @@ only files an issue on a `1`.
 
 ## Security
 
-These skills drive a read-only surface. The two contribution tools on the connector write, and every
-skill here says the same thing about them: never call one without asking first.
+These skills drive a read-only surface: the connector's query path rejects every write and
+administrative clause before it runs.
 
 Rows the graph returns are strings third parties wrote, and in an investigation some of them were
 written by the people under investigation. Every skill carries an identical block instructing the model
