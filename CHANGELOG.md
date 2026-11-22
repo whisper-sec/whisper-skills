@@ -38,6 +38,9 @@ rewrite, not an edit.
 - `/whisper-setup` — connects the connector, or works out why it is not answering.
 - Plugin packaging: a Claude Code plugin manifest and marketplace entry, plus an Agent Plugins 1.0.0
   manifest for cross-vendor plugin surfaces.
+- ChatGPT and Codex plugin metadata: listing fields under `extensions.com.openai.interface` in
+  `plugin.json`, and `mcp.json` declaring the connector with OAuth. `check_manifests.py` holds both to
+  OpenAI's public-submission limits. Claude Code does not read `mcp.json`, so nothing changes there.
 - Coverage semantics throughout. Every skill now reads the coverage fields before reporting a verdict,
   and states plainly that "never seen" is not "clean".
 - An identical untrusted-data block in every skill, with a check that fails the build if the copies
