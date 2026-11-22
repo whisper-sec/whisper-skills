@@ -12,8 +12,8 @@ right one.
 
 ## What this repository contains
 
-Markdown. Four Agent Skills, one subagent definition, one slash command, five Python validation scripts,
-and three manifests. **Nothing here is installed as a runtime dependency, nothing here runs on your
+Markdown. Four Agent Skills, one subagent definition, one slash command, the Python validation scripts,
+and the plugin manifests. **Nothing here is installed as a runtime dependency, nothing here runs on your
 machine when a skill loads, and nothing here ships a credential.**
 
 The scripts under `scripts/` are development and CI tooling. They use only the Python standard library,
@@ -47,12 +47,14 @@ often holds other connectors that can write.
 **No secret is stored here.** No skill, manifest, script or example contains an API key, and none should
 ever be added. If a client needs a static key, it belongs in an environment variable, referenced from
 the client's configuration by expansion — never written into the configuration file itself, and never
-into a file at project scope, which is a file meant to be committed. This plugin does not
-bundle an MCP server configuration and does not ask for a credential.
+into a file at project scope, which is a file meant to be committed. For ChatGPT and Codex, `mcp.json`
+declares the connector by its public URL, with OAuth sign-in. It holds no credential, Claude Code does
+not read it, and the plugin itself never asks for one.
 
-**Installing the plugin does not connect anything.** The connector is added separately and requires a
-browser sign-in you complete yourself. A skill that cannot reach the connector is instructed to say so
-and stop — not to fall back to model knowledge, and not to let a missing tool turn into a closed alert.
+**Installing the plugin does not connect anything by itself.** The connector needs a browser sign-in you
+complete yourself, and in Claude Code it is added separately. A skill that cannot reach the connector
+is instructed to say so and stop — not to fall back to model knowledge, and not to let a missing tool
+turn into a closed alert.
 
 ## What the connector does with what you send
 
