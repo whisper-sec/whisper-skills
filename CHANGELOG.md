@@ -72,6 +72,10 @@ rewrite, not an edit.
   loads in Claude Code but is rejected outright by claude.ai upload and the Skills API, which would have
   quietly made these Claude-Code-only.
 - Every reference to a graph statistic removed from prose, and a lint added to keep it that way.
+- `check_cypher.py` no longer fails a block over the contact-data entitlement. The engine qualifies any
+  statement that names contact data when the caller lacks that entitlement, and a check without
+  credentials never has it. Such a block is still planned and checked, and is listed as needing the
+  entitlement to run. Every other advisory still fails the block.
 
 ## [1.0.0] — 2026-05-14
 
