@@ -16,6 +16,8 @@ Full detail is in [CONTRIBUTING.md](CONTRIBUTING.md). The short version:
 - **Only the six Agent Skills specification frontmatter fields.** Anything else is a hard rejection on
   claude.ai upload and the Skills API. Version lives in `plugin.json`.
 - **No graph statistics in prose.** If the server can return it, teach the model to ask for it.
+- **Skills name only the tools every client lists, never a workflow slug.** `check_surface.py` enforces
+  it, for the skills and for the review cases in `plugin.json`.
 - **Each skill is self-contained.** No relative link leaves its own directory; references stay one level
   deep.
 - **The untrusted-data block is byte-identical in all four skills.** Change it in one, change it in all,

@@ -5,9 +5,11 @@ Two manifests describe this repo: the Claude Code plugin manifest and the cross-
 Agent Plugins manifest. A version declared in two places is a version that will disagree,
 so the version is set in both manifests and this check is what keeps them equal.
 
-The Agent Plugins manifest also carries the ChatGPT and Codex listing (extensions.com.openai),
-and mcp.json declares the connector for those clients. Both are held to OpenAI's
-public-submission limits here, because an upload accepts drafts that a submission refuses.
+The Agent Plugins manifest also carries the ChatGPT and Codex listing, review cases and
+release notes (extensions.com.openai), mcp.json declares the connector for those clients, and
+each skill declares its dependency on that connector in agents/openai.yaml. All of it is held
+to OpenAI's public-submission limits here, because an upload accepts drafts that a submission
+refuses.
 
 Offline. No network, no credentials.
 
@@ -18,6 +20,7 @@ import os
 import re
 import struct
 import sys
+from urllib.parse import urlsplit
 
 CLAUDE_PLUGIN = ".claude-plugin/plugin.json"
 CLAUDE_MARKETPLACE = ".claude-plugin/marketplace.json"
@@ -46,6 +49,21 @@ ICON_FORMATS = (".png", ".jpg", ".jpeg", ".webp", ".svg")
 ICON_MAX_BYTES = 5 * 1024 * 1024
 # The color must keep 2:1 contrast against the theme background it is shown on.
 BRAND_COLORS = (("brandColor", "#FFFFFF"), ("brandColorDark", "#212121"))
+
+# "Configure onboarding, review, and publication" in the same page (read 2026-11-23). Initial
+# review of a plugin with an MCP server needs exactly five positive and three negative cases.
+OPENAI_KEYS = {"interface", "onboardingSkill", "review", "publication"}
+REVIEW_KEYS = {"test_cases", "demo_recording_url", "commerce", "commerce_description"}
+CASE_KEYS = {"description", "prompt", "tools_triggered", "expected_behavior",
+             "file_attachment_urls", "expected_output_url"}
+CASE_COUNTS = (("positive", 5), ("negative", 3))
+PUBLICATION_KEYS = {"countries", "release_notes", "translations"}
+COUNTRY = re.compile(r"^[A-Z]{2}$")
+
+# "Use MCP tools from a skill" in https://developers.openai.com/plugins/build/skills.
+SKILLS_DIR = "skills"
+SKILL_DEPENDENCY = os.path.join("agents", "openai.yaml")
+YAML_KEY = re.compile(r"^(\s*)(-\s+)?([A-Za-z_][A-Za-z0-9_-]*):(?:\s+(.*))?$")
 
 # Reserved by Anthropic; a marketplace using one of these will not load.
 RESERVED_MARKETPLACE_NAMES = {
@@ -163,8 +181,8 @@ def check_mcp(fails):
     if server.get("type") != "streamable-http":
         fails.append("%s.type must be streamable-http; the connector speaks Streamable HTTP" % where)
     url = server.get("url")
-    if not isinstance(url, str) or not url.startswith("https://"):
-        fails.append("%s.url must be an https URL" % where)
+    if not is_https(url):
+        fails.append("%s.url must be an https URL with a host and no credentials" % where)
     if server.get("headers"):
         fails.append("%s.headers must be empty; public submission rejects server headers" % where)
     if "command" in server:
@@ -182,7 +200,240 @@ def check_mcp(fails):
         elif mode != "provided" and ("clientId" in client or "tokenEndpointAuthMethod" in client):
             fails.append("%s: a %s client takes no clientId or tokenEndpointAuthMethod"
                          % (where, mode))
-    return "server '%s' at %s" % (server_name, url)
+    return server_name, url
+
+
+def is_https(value):
+    """An https URL with a host and no credentials in it."""
+    if not isinstance(value, str) or any(c.isspace() for c in value):
+        return False
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return False
+    return parts.scheme == "https" and bool(parts.hostname) and "@" not in parts.netloc
+
+
+def check_review(review, fails):
+    """The review cases and commerce declaration, as the dashboard imports them from the ZIP."""
+    where = "%s: extensions.com.openai.review" % AGENT_PLUGIN
+    if not isinstance(review, dict):
+        fails.append("%s is missing; a plugin with an MCP server needs review cases for its first "
+                     "review" % where)
+        return 0, 0
+    for key in sorted(set(review) - REVIEW_KEYS - {"test_credentials", "reviewer_instructions"}):
+        fails.append("%s.%s is not a review field" % (where, key))
+    if "demo_recording_url" in review and not is_https(review["demo_recording_url"]):
+        fails.append("%s.demo_recording_url must be an https URL" % where)
+    if "commerce" in review and not isinstance(review["commerce"], bool):
+        fails.append("%s.commerce must be true or false" % where)
+    if "commerce_description" in review and (
+            not isinstance(review["commerce_description"], str)
+            or not review["commerce_description"].strip()):
+        fails.append("%s.commerce_description must be non-empty text" % where)
+
+    cases = review.get("test_cases")
+    if not isinstance(cases, dict):
+        fails.append("%s.test_cases must hold the positive and negative cases" % where)
+        return 0, 0
+    counts = []
+    for kind, required in CASE_COUNTS:
+        entries = cases.get(kind)
+        if not isinstance(entries, list) or len(entries) != required:
+            fails.append("%s.test_cases.%s must hold exactly %d cases, not %s"
+                         % (where, kind, required,
+                            len(entries) if isinstance(entries, list) else "none"))
+            counts.append(0)
+            continue
+        counts.append(len(entries))
+        prompts = []
+        for i, case in enumerate(entries):
+            at = "%s.test_cases.%s[%d]" % (where, kind, i)
+            if not isinstance(case, dict):
+                fails.append("%s must be an object" % at)
+                continue
+            for key in sorted(set(case) - CASE_KEYS):
+                fails.append("%s.%s is not a test-case field" % (at, key))
+            needed = ("description", "prompt")
+            if kind == "positive":
+                needed += ("tools_triggered", "expected_behavior")
+            for key in needed:
+                if not isinstance(case.get(key), str) or not case[key].strip():
+                    fails.append("%s.%s is required" % (at, key))
+            description = case.get("description")
+            if kind == "positive" and isinstance(description, str) and len(description) > 4000:
+                fails.append("%s.description is over 4000 characters" % at)
+            urls = case.get("file_attachment_urls", [])
+            if not isinstance(urls, list) or not all(is_https(u) for u in urls):
+                fails.append("%s.file_attachment_urls must be a list of https URLs" % at)
+            if "expected_output_url" in case and not is_https(case["expected_output_url"]):
+                fails.append("%s.expected_output_url must be an https URL" % at)
+            if isinstance(case.get("prompt"), str):
+                prompts.append(case["prompt"].strip())
+        if len(set(prompts)) != len(prompts):
+            fails.append("%s.test_cases.%s repeats a prompt" % (where, kind))
+    return tuple(counts)
+
+
+def check_publication(publication, fails):
+    where = "%s: extensions.com.openai.publication" % AGENT_PLUGIN
+    if publication is None:
+        return
+    if not isinstance(publication, dict):
+        fails.append("%s must be an object" % where)
+        return
+    for key in sorted(set(publication) - PUBLICATION_KEYS):
+        fails.append("%s.%s is not a publication field" % (where, key))
+    notes = publication.get("release_notes")
+    if notes is not None and (not isinstance(notes, str) or not notes.strip()):
+        fails.append("%s.release_notes must be non-empty text" % where)
+    countries = publication.get("countries")
+    if countries is not None and (not isinstance(countries, list)
+                                  or not all(isinstance(c, str) and COUNTRY.match(c)
+                                             for c in countries)):
+        fails.append("%s.countries must be a list of uppercase two-letter country codes" % where)
+    translations = publication.get("translations")
+    if translations is None:
+        return
+    if not isinstance(translations, dict):
+        fails.append("%s.translations must map locales to listing text" % where)
+        return
+    for locale, text in translations.items():
+        if not isinstance(text, dict):
+            fails.append("%s.translations.%s must be an object" % (where, locale))
+            continue
+        for field, limit in (("subtitle", 30), ("description", 4000)):
+            value = text.get(field)
+            if value is not None and (not isinstance(value, str) or len(value) > limit):
+                fails.append("%s.translations.%s.%s must be text of at most %d characters"
+                             % (where, locale, field, limit))
+
+
+def yaml_scalar(text, number):
+    """One YAML scalar and any comment after it: the value, or None when the line has none.
+
+    Reads the quoted and plain one-line forms. A # starts a comment only outside quotes and
+    after whitespace, so a color such as "#8A5CC7" or a quoted " # " stays part of its value.
+    """
+    text = (text or "").strip()
+    if not text or text.startswith("#"):
+        return None
+    if text[0] in "|>":
+        raise ValueError("line %d: a block scalar is not read here; write the value on one line"
+                         % number)
+    if text[0] not in "\"'":
+        cut = re.search(r"\s#", text)
+        return text[:cut.start()].rstrip() if cut else text
+    quote, out, i = text[0], [], 1
+    while i < len(text):
+        ch = text[i]
+        if quote == '"' and ch == "\\":
+            if text[i + 1:i + 2] not in ('"', "\\"):
+                raise ValueError("line %d: an escape other than \\\" or \\\\ is not read here"
+                                 % number)
+            out.append(text[i + 1])
+            i += 2
+            continue
+        if ch == quote:
+            if quote == "'" and text[i + 1:i + 2] == "'":
+                out.append("'")
+                i += 2
+                continue
+            rest = text[i + 1:].strip()
+            if rest and not rest.startswith("#"):
+                raise ValueError("line %d: text after the closing quote" % number)
+            return "".join(out)
+        out.append(ch)
+        i += 1
+    raise ValueError("line %d: the quoted value is not closed" % number)
+
+
+def read_dependency(path):
+    """The tool dependencies in a skill's agents/openai.yaml, as a list of dicts.
+
+    A deliberately small reader, so the check needs no third-party YAML parser. It reads the
+    top-level dependencies block, where tools is a list of flat key: value entries, and passes
+    over every other section, such as interface and policy, unread.
+    """
+    tools, top, sub, sub_indent, current = [], None, None, None, None
+    for number, raw in enumerate(open(path, encoding="utf-8"), 1):
+        line = raw.rstrip()
+        text = line.lstrip()
+        if not text or text.startswith("#") or text in ("---", "..."):
+            continue
+        indent = len(line) - len(text)
+        listed = text == "-" or text.startswith("- ")
+        if indent == 0 and not listed:
+            match = YAML_KEY.match(line)
+            if not match:
+                raise ValueError("line %d is not a top-level key" % number)
+            top, sub, sub_indent, current = match.group(3), None, None, None
+            if top == "dependencies" and yaml_scalar(match.group(4), number) is not None:
+                raise ValueError("line %d: dependencies must be a mapping" % number)
+            continue
+        if top != "dependencies":
+            continue
+        if sub_indent is None:
+            sub_indent = indent
+        if indent < sub_indent:
+            raise ValueError("line %d is indented less than the block it is in" % number)
+        if indent == sub_indent and not listed:
+            match = YAML_KEY.match(line)
+            if not match:
+                raise ValueError("line %d is not a key: value pair" % number)
+            sub, current = match.group(3), None
+            if sub == "tools" and yaml_scalar(match.group(4), number) is not None:
+                raise ValueError("line %d: dependencies.tools must be a list of entries" % number)
+            continue
+        if sub != "tools":
+            continue
+        match = YAML_KEY.match(line)
+        if not match:
+            raise ValueError("line %d is not a key: value pair" % number)
+        key, value = match.group(3), yaml_scalar(match.group(4), number)
+        if match.group(2):
+            current = {}
+            tools.append(current)
+        elif current is None:
+            raise ValueError("line %d: '%s' is not inside a dependencies.tools entry" % (number, key))
+        if value is None:
+            raise ValueError("line %d: '%s' has no value; a tool entry holds flat key: value pairs"
+                             % (number, key))
+        current[key] = value
+    return tools
+
+
+def check_skill_dependencies(server, fails):
+    """Every skill names the connector it needs, and names it exactly as mcp.json declares it."""
+    names = sorted(d for d in os.listdir(SKILLS_DIR)
+                   if os.path.isfile(os.path.join(SKILLS_DIR, d, "SKILL.md")))
+    for name in names:
+        path = os.path.join(SKILLS_DIR, name, SKILL_DEPENDENCY)
+        if not os.path.isfile(path):
+            fails.append("%s: missing; declare the connector this skill calls" % path)
+            continue
+        try:
+            tools = read_dependency(path)
+        except ValueError as exc:
+            fails.append("%s: %s" % (path, exc))
+            continue
+        mcp = [t for t in tools if t.get("type") == "mcp"]
+        if len(mcp) != 1:
+            fails.append("%s: declare exactly one mcp tool dependency, not %d" % (path, len(mcp)))
+            continue
+        entry = mcp[0]
+        if server is not None:
+            server_name, url = server
+            if entry.get("value") != server_name:
+                fails.append("%s: value '%s' is not the server '%s' in %s"
+                             % (path, entry.get("value"), server_name, AGENT_MCP))
+            if entry.get("url") != url:
+                fails.append("%s: url '%s' is not %s's %s" % (path, entry.get("url"), AGENT_MCP, url))
+        if entry.get("transport") != "streamable_http":
+            fails.append("%s: transport must be streamable_http" % path)
+        if not (entry.get("description") or "").strip():
+            fails.append("%s: description is required" % path)
+    return len(names)
 
 
 def check_openai(agent, fails):
@@ -191,11 +442,21 @@ def check_openai(agent, fails):
     if not isinstance(openai, dict):
         fails.append("%s: extensions.com.openai is missing; the ChatGPT and Codex listing lives "
                      "there" % AGENT_PLUGIN)
-        return None
+        openai = {}
     for key in ("apps", "hooks"):
         if key in openai:
             fails.append("%s: extensions.com.openai.%s makes the package ineligible for the "
                          "public plugin directory" % (AGENT_PLUGIN, key))
+    for key in sorted(set(openai) - OPENAI_KEYS - {"apps", "hooks"}):
+        fails.append("%s: extensions.com.openai.%s is not an OpenAI plugin field"
+                     % (AGENT_PLUGIN, key))
+    onboarding = openai.get("onboardingSkill")
+    if onboarding is not None and (
+            not isinstance(onboarding, str) or not onboarding.startswith("./skills/")
+            or not onboarding.endswith("/SKILL.md") or ".." in onboarding
+            or not os.path.isfile(onboarding)):
+        fails.append("%s: extensions.com.openai.onboardingSkill must be the ./skills/<name>/SKILL.md "
+                     "of a packaged skill" % AGENT_PLUGIN)
     for path in ("hooks/hooks.json", ".app.json"):
         if os.path.exists(path):
             fails.append("%s exists; a package with lifecycle hooks or app references cannot be "
@@ -209,9 +470,24 @@ def check_openai(agent, fails):
                              "repository" % (AGENT_PLUGIN, key))
 
     listing = openai.get("interface")
-    if not isinstance(listing, dict):
+    if isinstance(listing, dict):
+        check_listing(listing, fails)
+    else:
         fails.append("%s: extensions.com.openai.interface is missing" % AGENT_PLUGIN)
-        return None
+        listing = {}
+
+    server = check_mcp(fails)
+    positive, negative = check_review(review, fails)
+    check_publication(openai.get("publication"), fails)
+    skills = check_skill_dependencies(server, fails)
+    return "listing '%s'; connector %s; review cases %d positive, %d negative; dependency files checked for %d skills" % (
+        listing.get("displayName"),
+        "'%s' at %s" % server if server else "invalid",
+        positive, negative, skills)
+
+
+def check_listing(listing, fails):
+    """The directory listing text, links, prompts, colors and icons."""
     where = "%s: extensions.com.openai.interface" % AGENT_PLUGIN
     for field, limit in LISTING_TEXT:
         value = listing.get(field)
@@ -226,10 +502,9 @@ def check_openai(agent, fails):
         fails.append("%s.capabilities must be at most 20 labels of at most 120 characters" % where)
     for field in LISTING_URLS:
         value = listing.get(field)
-        if not isinstance(value, str) or not value.startswith("https://") or len(value) > 1024:
-            fails.append("%s.%s must be an https URL of at most 1024 characters" % (where, field))
-        elif "@" in value.split("/")[2]:
-            fails.append("%s.%s must not carry credentials" % (where, field))
+        if not is_https(value) or len(value) > 1024:
+            fails.append("%s.%s must be an https URL with a host and no credentials, of at most "
+                         "1024 characters" % (where, field))
     prompts = listing.get("defaultPrompt", [])
     if isinstance(prompts, str):
         prompts = [prompts]
@@ -258,9 +533,6 @@ def check_openai(agent, fails):
     for field in LISTING_ICONS:
         if field in listing:
             check_icon(field, listing[field], fails)
-
-    connector = check_mcp(fails)
-    return "listing '%s'; connector %s" % (listing.get("displayName"), connector or "invalid")
 
 
 def main():

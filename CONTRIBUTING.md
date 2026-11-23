@@ -1,10 +1,10 @@
 # Contributing
 
 The product of this repository is **claims**. Almost every line asserts something about a live server:
-that a tool exists, that a workflow slug is real, that an edge points a particular way, that a query
-plans. A claim that goes false does not fail loudly — the model simply starts telling someone something
-untrue. So the checks below are not ceremony; they are the only thing standing between a merged pull
-request and a quietly wrong playbook.
+that a tool exists and every client lists it, that an edge points a particular way, that a query plans.
+A claim that goes false does not fail loudly: the model simply starts telling someone something untrue.
+So the checks below are not ceremony; they are the only thing standing between a merged pull request
+and a quietly wrong playbook.
 
 ## Verify before you open a pull request
 
@@ -60,8 +60,13 @@ pull request. `check_safety_block.py` enforces this and compares hashes.
 graph has never observed is never reported as safe. If a change makes an empty result easier to read as
 a clean result, it will be rejected regardless of how much else it improves.
 
-**Slugs and tool names are named, counts are not.** A wrong slug fails loudly and CI catches it. A wrong
-count fails silently and CI cannot.
+**Tool names are named, counts are not.** A wrong tool name fails loudly and CI catches it. A wrong count
+fails silently and CI cannot.
+
+**Skills name only the tools every client lists, and never a workflow slug.** The connector gives some
+clients a fixed tool list, and a skill that relies on a tool missing from one of them breaks there
+silently. Reach a workflow through its named tool. `check_surface.py` fails a skill, or a review case in
+`plugin.json`, that names anything else.
 
 ## Adding or changing a skill
 
@@ -74,7 +79,9 @@ count fails silently and CI cannot.
   that is deliberately wrong — shown to be recognised, not run — is fenced
   ```` ```cypher-illustrative ````.
 - A new skill costs every user a small always-on context budget whether it fires or not. Adding one
-  should replace guesswork, not restate a workflow that `list_workflows` already describes live.
+  should replace guesswork, not restate what a named investigation tool already does.
+- Each skill declares the connector it calls in `agents/openai.yaml`. A new skill gets the same file;
+  `check_manifests.py` fails a skill without one.
 
 ## Versioning
 

@@ -4,11 +4,12 @@ The MCP connector is the supported path for an assistant, and everything in the 
 This file exists for the two cases the connector does not cover: a client with no MCP support, and a
 script or CI job that needs to check something without a session.
 
-**This is not an investigation path.** The HTTP API does not enforce the connector's query-safety rules,
-does not return the coverage block, the evidence trail, the typed error envelope, or any of the
-self-correction fields. A query that passes here can still be rejected by the connector, and a verdict
-read here arrives without the qualifications that make it safe to report. Use it to check connectivity,
-to validate a query's shape, or to script something small — not to answer a security question.
+**This is not an investigation path.** The HTTP API does not run the connector's query-safety rules, and
+it returns no coverage block, no evidence trail, no typed error envelope, and none of the connector's
+self-correction fields beyond a bare note when the engine rewrites a label. A
+query that passes here can still be rejected by the connector, and a verdict read here arrives without
+the qualifications that make it safe to report. Use it to check connectivity, to validate a query's
+shape, or to script something small. Do not use it to answer a security question.
 
 ## The endpoint
 
@@ -22,54 +23,63 @@ curl -sS -A "your-tool-name/1.0" \
 ```
 
 The body field is **`query`**, and bound values go in **`parameters`**. A `GET` variant takes the query
-as `?q=`, and a statistics endpoint at `/api/query/stats` returns live graph totals in one cheap call —
-use it instead of any whole-graph aggregate.
+as `?q=`. A statistics endpoint at `/api/query/stats` returns live graph totals in one cheap call: use it
+instead of any whole-graph aggregate.
 
 ```bash
 curl -sS -A "your-tool-name/1.0" \
   -H 'content-type: application/json' \
-  --data '{"query":"CALL whisper.assess([$v]) YIELD host, label, band","parameters":{"v":"8.8.8.8"}}' \
+  --data '{"query":"CALL whisper.assess([$v]) YIELD host, label, band RETURN host, label, band","parameters":{"v":"8.8.8.8"}}' \
   https://graph.whisper.security/api/query
 ```
 
-**Always send an explicit `User-Agent`.** The edge rejects some default programmatic agent strings with
-a 403 that looks exactly like an outage. Any descriptive string avoids it. This bites scripted clients
-hardest, because their language's default agent string is often the one that gets blocked.
+Send a descriptive `User-Agent` naming your tool. If a scripted call is refused with a 403 while the same
+query works from elsewhere, the agent string is the first thing to change.
 
 ## The response
 
-Every success returns the same three fields: `columns`, `rows` — one object per row, keyed by column
-name — and `statistics` with the row count and server-side execution time. Errors come back as
-`application/problem+json` with a type, title, status, detail, and usually a suggestions array.
+A success returns `columns`, `rows`, one object per row keyed by column name, and `statistics` with the
+row count and server-side execution time. Two more fields appear when they apply:
 
-Note what is *not* there: no coverage block, no evidence block, no typed `errorCode`, no `autoLimited`,
-`rewritten`, `fix`, or `truncations`. Those are connector fields.
+- **`advisories`**: notes from the engine about a run that succeeded, each with a `kind` and a `message`.
+  Some say a column was withheld from this caller, which makes an empty value withheld rather than
+  absent. Surface them.
+- **`rewrittenQuery`**: the engine corrected a drifted label, such as `DOMAIN` to `HOSTNAME`, and ran the
+  corrected query. An advisory names the change. Fix the source.
+
+Errors come back as `application/problem+json` with a `type`, `title`, `status`, `detail`, and usually a
+`suggestions` array.
+
+What is *not* there: no coverage block, no evidence block, no typed `errorCode`, no `fix`, no
+`pagination`. Those are connector fields.
 
 ## Keyless and keyed
 
-There is a real keyless tier, and it returns real answers.
+Keyless access is real, and it returns real answers.
 
-Without a key you can call the direct read procedures — coverage-qualified assessment, host identity,
-threat scoring, lookalike generation, structural neighbourhood, origin discovery, history — and run
-shallow Cypher. It is rate-limited per source address and shallow in traversal depth. It is a taste,
-not a foundation: build anything real on a key.
+Without a key you can call the direct read procedures, such as coverage-qualified assessment, host
+identity, threat scoring, look-alike generation, structural neighbourhood, origin discovery and history,
+and run shallow Cypher. It is rate-limited per source address and shallow in traversal depth, and some
+columns come back empty, with an advisory saying which.
 
-With a key, sent as `X-API-Key`, the rate limit lifts and deeper traversal and the rest of the surface
+With a key, sent as `X-API-Key`, the rate limit rises and deeper traversal and the rest of the surface
 open up. `Authorization: Bearer <key>` and `Authorization: ApiKey <key>` are also accepted.
 
-Ask the graph what tier you are actually on rather than assuming — this call never counts against quota:
+Ask the graph what access you actually have rather than assuming. This call never counts against quota:
 
 ```cypher
 CALL whisper.quota() YIELD key, value
 RETURN key, value
 ```
 
-It reports the plan, whether the request is anonymous, the traversal-depth cap, the response-row caps,
-the timeout, the concurrency limit, and the remaining hourly and daily budget.
+It reports whether the request is anonymous, the key's status, the traversal-depth cap, the timeouts,
+the response-row caps, the concurrency limit, and the remaining hourly and daily budget.
 
-**An invalid key does not fail the request.** It silently degrades to the anonymous tier. Shallow-looking
-results, a depth error on a query that used to work, or an unexpected rate limit almost always mean a
-bad or missing header — check the tier before you debug the query.
+**An invalid key does not fail the request.** It falls back to keyless access. The `X-Key-Status`
+response header, and the `keyStatus` row above, say why: `absent` when no key arrived, `malformed` when
+one arrived and could not be read. Shallow-looking results, a depth error on a query that used to work,
+or an unexpected rate limit almost always mean a bad or missing header. Check the key status before you
+debug the query.
 
 ## Handling a key
 
@@ -87,17 +97,17 @@ curl -sS -A "your-tool-name/1.0" \
 Keys are issued from the Whisper Security console. Revoke a key there if it is ever exposed.
 
 For MCP clients that cannot complete a browser sign-in, the same key works as a bearer header on the
-connector, and there is a bridge for clients that speak only local transports. The setup guide in the
-documentation covers the per-client configuration.
+connector. The setup guide at https://www.whisper.security/docs/ai/mcp/setup covers the per-client
+configuration.
 
 ## Limits worth knowing before you script against it
 
-- Queries are time-capped, and the cap is lower on the anonymous tier than on a key. Exceeding it
-  returns an HTTP error, not a partial result.
-- Traversal depth is capped by tier. A deep query that returns nothing on the anonymous tier has hit the
-  cap, not found nothing.
-- Concurrency is capped. On the anonymous tier it is one request at a time; a parallel script will
-  serialise or fail.
+- Queries are time-capped, and the cap is lower without a key. Exceeding it returns an HTTP error, not a
+  partial result.
+- Traversal depth is capped. A query deeper than the cap is refused with a `query-depth-exceeded`
+  problem that states the depth it needed and the cap it hit. It is never an empty result.
+- Concurrency is capped. Without a key it is one request at a time, so a parallel script will serialise
+  or fail.
 - The anonymous quota is keyed to your source address. On a connection with rotating addresses the
-  counter resets unpredictably — do not treat it as a stable budget.
+  counter resets unpredictably, so do not treat it as a stable budget.
 - Metadata and introspection calls do not count against quota.

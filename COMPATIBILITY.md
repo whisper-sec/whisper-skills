@@ -7,7 +7,8 @@ They name **tools**, not versions.
 There is deliberately no supported-server-version range here. The connector versions independently, on
 its own schedule, and a range asserted in this repository would be a claim with no way to check it. What
 is asserted instead is falsifiable: **every tool name, resource URI and workflow slug in this repository
-existed on the live server the last time CI ran**, and CI runs on every pull request and every night.
+existed on the live server the last time CI ran, and every tool a skill names is on every client's tool
+list**. CI runs on every pull request and every night.
 
 If the server stops exposing something a skill names, the nightly check fails within a day and opens an
 issue. Anyone can re-establish that for themselves, with no credentials:
@@ -29,21 +30,23 @@ and no runtime-specific body syntax, so the same files load everywhere SKILL.md 
 | Claude Code | plugin, or copy into `~/.claude/skills/` | Also gets the subagent and the `/whisper-setup` command |
 | Claude.ai | upload a zipped skill folder in Settings | Team and Enterprise admins can provision for the organisation |
 | Claude Agent SDK | filesystem discovery | Skills are files; there is no registration API |
-| Claude Messages API | upload through the Skills API, reference in the request | Needs the code-execution tool. **The container has no MCP access** — a skill's *instructions* can direct the outer model to call connector tools, but nothing inside the sandbox can reach them |
+| Claude Messages API | upload through the Skills API, reference in the request | Needs the code-execution tool. **The container has no MCP access**: a skill's *instructions* can direct the outer model to call connector tools, but nothing inside the sandbox can reach them |
+| ChatGPT and Codex | as a plugin: `plugin.json`, `mcp.json`, `skills/`, `assets/` | The connector gives these clients a fixed tool list, and the skills name only tools on it. Each skill declares the connector in `agents/openai.yaml` |
 | Other SKILL.md runtimes | `npx skills add whisper-sec/whisper-skills` | Detects the agents you have installed and places each skill where that one looks. `~/.agents/skills/` is the emerging shared path |
 
 Custom skills do not sync between these surfaces. Each is a separate install.
 
 The subagent and the slash command are Claude Code components and do not exist on the other surfaces.
-Everything they do is also written into the skills, so nothing is lost — a bulk run simply happens in the
+Everything they do is also written into the skills, so nothing is lost: a bulk run simply happens in the
 main context instead of an isolated one.
 
 ## Which clients can reach the connector
 
 The connector speaks Streamable HTTP and requires authentication; there is no anonymous mode.
 
-- **OAuth with dynamic client registration** is the recommended path, and most clients connect with just
-  the URL.
+- **OAuth** is the recommended path. The server accepts a client that identifies itself with a Client
+  ID Metadata Document or registers dynamically, so most clients connect with just the URL. On Claude,
+  the Connectors Directory listing does the whole flow; ChatGPT takes OAuth only.
 - **A static bearer key** is the fallback for clients that do not do OAuth. Claude.ai and Claude
   Desktop's connector UI do not accept custom headers, so those two need the OAuth flow or a local
   bridge.
