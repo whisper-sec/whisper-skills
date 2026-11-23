@@ -12,8 +12,9 @@ right one.
 
 ## What this repository contains
 
-Markdown. Four Agent Skills, one subagent definition, one slash command, the Python validation scripts,
-and the plugin manifests. **Nothing here is installed as a runtime dependency, nothing here runs on your
+Markdown, plus JSON and YAML manifests. Four Agent Skills, each with a small file naming the connector it
+calls, one subagent definition, one slash command, the Python validation scripts, and the plugin
+manifests. **Nothing here is installed as a runtime dependency, nothing here runs on your
 machine when a skill loads, and nothing here ships a credential.**
 
 The scripts under `scripts/` are development and CI tooling. They use only the Python standard library,
@@ -21,7 +22,7 @@ take no credentials, and are not invoked by any skill. Three of them reach the n
 fixed public endpoints: `mcp.whisper.security` for the tool manifest, `www.whisper.security` for the
 workflow gallery, and `graph.whisper.security` for the public query API. One exception worth knowing
 before you run it on someone else's branch: `check_links.py` fetches every external URL it finds in a
-markdown file, so the set of hosts it contacts is whatever the tree contains.
+markdown, JSON or YAML file, so the set of hosts it contacts is whatever the tree contains.
 
 ## The trust model
 
@@ -76,8 +77,8 @@ afternoon, which is deliberate.
 
 ## Scope and intended use
 
-These skills support defensive security work: triaging an indicator, mapping your own attack surface,
-finding impersonations of your own brand, and assembling evidence for a takedown. They query a graph of
+These skills support defensive security work: triaging an indicator, mapping the infrastructure behind
+your own domains, finding impersonations of your own brand, and assembling evidence for a takedown. They query a graph of
 public and licensed internet-infrastructure data.
 
 They are not a scanning tool and they do not touch a target. Use of the underlying service is governed

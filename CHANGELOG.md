@@ -11,7 +11,7 @@ instructions their assistant is following.
 ## [2.0.0] — unreleased
 
 Everything in the previous release was written against a tool surface that no longer exists. This is a
-rewrite, not an edit.
+rewrite, not an edit. Content last verified against the live connector on 2026-11-23.
 
 ### Breaking
 
@@ -20,9 +20,9 @@ rewrite, not an edit.
   `npx skills add whisper-sec/whisper-skills` now does it for you on any client.
 - **Removed four tool names that no longer exist on the connector.** The skills previously instructed
   the assistant to call a history tool, a domain-variants tool, and two schema-introspection tools. All
-  four are gone; the current surface answers the same questions through the schema tool, the workflow
-  gallery, and procedures called inside a query. A first run against the old skills failed.
-- **Removed `scripts/format_sweep.py`.** It hand-rolled what a single gallery workflow now does
+  four are gone; the current surface answers the same questions through the schema tool, the named
+  investigation tools, and procedures called inside a query. A first run against the old skills failed.
+- **Removed `scripts/format_sweep.py`.** It hand-rolled what a single investigation tool now does
   server-side, and it imposed a Python runtime requirement that no client enforces and several do not
   satisfy. Report formatting moved into the skill body.
 - **Removed the sixty-pattern cookbook and the bundled schema dump.** Both were snapshots of a moving
@@ -34,40 +34,58 @@ rewrite, not an edit.
 
 ### Added
 
-- `whisper-bulk-triage` — a fourth skill for a list from a SIEM, EDR or spreadsheet. Splits results into
-  assessed, never-seen and check-failed so an unobserved indicator is never counted as clean.
+- `whisper-bulk-triage`: a fourth skill for a list from a SIEM, EDR or spreadsheet. A pasted list goes to
+  the connector's watchlist triage in one call, and results are split into assessed, never-seen and
+  check-failed so an unobserved indicator is never counted as clean.
 - A Claude Code subagent of the same name, so a large run happens in an isolated context and returns
   only the table.
-- `/whisper-setup` — connects the connector, or works out why it is not answering.
+- `/whisper-setup`: connects the connector, starting from the Claude Connectors Directory listing on
+  Claude, or works out why it is not answering.
 - Plugin packaging: a Claude Code plugin manifest and marketplace entry, plus an Agent Plugins 1.0.0
   manifest for cross-vendor plugin surfaces.
-- ChatGPT and Codex plugin metadata: listing fields under `extensions.com.openai.interface` in
-  `plugin.json`, and `mcp.json` declaring the connector with OAuth. `check_manifests.py` holds both to
-  OpenAI's public-submission limits. Claude Code does not read `mcp.json`, so nothing changes there.
+- ChatGPT and Codex plugin metadata: listing fields, review cases, a commerce declaration and release
+  notes under `extensions.com.openai` in `plugin.json`; `mcp.json` declaring the connector with OAuth;
+  and `agents/openai.yaml` in each skill naming the connector it calls. `check_manifests.py` holds all of
+  it to OpenAI's public-submission limits. Claude Code reads none of these files, so nothing changes
+  there.
+- CVE IDs and file hashes as indicators, in investigation and in bulk triage.
+- Query patterns for mail posture, SPF senders, RPKI ROAs, BGP neighbours and announcement history, DNS
+  history, a network's physical presence, URL assessment and threat context, each planned against the
+  live graph.
 - Coverage semantics throughout. Every skill now reads the coverage fields before reporting a verdict,
   and states plainly that "never seen" is not "clean".
 - An identical untrusted-data block in every skill, with a check that fails the build if the copies
   drift apart.
 - CI that runs with **no credentials**, so a fork's pull request gets the same verdict a maintainer's
   does: frontmatter validation against the Agent Skills specification, a live check that every tool
-  name, resource and workflow slug still exists, a live check that every Cypher block still plans, a
-  lint that forbids graph statistics in prose, link checking, and manifest agreement.
+  name, resource and workflow slug still exists and that the skills and review cases name only tools
+  every client lists, a live check that every Cypher block still plans, a lint that forbids graph
+  statistics in prose, link checking, and manifest agreement.
 - A nightly drift job that opens an issue when the live surface stops matching the repository.
 
 ### Changed
 
-- All three surviving skills rewritten against the current connector: the workflow gallery, the schema
-  tool, host identity, documentation on demand, the typed error model, the self-correction contract,
-  pagination and parameter binding.
-- Corrected three claims that were repeated from the documentation and turned out to be wrong when
-  measured against the live graph, all three of which would have made an assistant misread a result:
-  a variable-length pattern **does** follow a query-time edge and return rows; the threat-listing edge
-  carries **no** properties, so recency comes from a verdict's `sources[]` rather than from Cypher; and
-  a verdict row can arrive with no coverage qualification at all, or with a zero score alongside a
-  populated `recoveredScore` — both of which now have explicit handling rather than being read as clean.
-- `whisper-brand-protection` now runs the gallery's typosquat workflow instead of a five-step hand-rolled
+- All three surviving skills rewritten against the current connector: the named investigation tools,
+  the schema tool, host identity, documentation on demand, the typed error model, the self-correction
+  contract, pagination and parameter binding.
+- **The skills call named investigation tools, never a workflow by slug.** Tools such as
+  `investigate_indicator`, `find_typosquats` and `triage_watchlist` are on every client's tool list,
+  while the generic workflow runner is not on all of them, so a skill that relied on it would break in
+  some clients. A workflow with no named tool is out of the skills' reach until the connector adds one.
+- Verdicts read against the live coverage vocabulary. A score that could not be computed arrives as
+  `UNSCORED` with a null score, never as a zero, and the skills read the coverage qualifier on every row
+  before its level.
+- Schema claims measured against the live graph rather than repeated from the documentation: a
+  variable-length pattern **does** follow a query-time edge and return rows; the threat-listing edge
+  carries its first and last sighting and the feed's weight; an address links straight to its country;
+  and an ordering comparison on `id()` is refused rather than silently matching nothing.
+- `whisper-brand-protection` now calls the connector's typosquat tool instead of a five-step hand-rolled
   sweep, and separates registered from weaponised so a defensive registration is never reported as an
   attack.
+- Registrant contact lookups run only when the user asks who registered a domain, and an empty contact
+  field is read as withheld, never as "no registrant".
+- Skill bodies are client-neutral. Client setup moved to the README and `/whisper-setup`, and no skill
+  calls a tool the user did not ask for, a connection probe included.
 - Frontmatter reduced to the six fields in the Agent Skills specification. A runtime-specific field
   loads in Claude Code but is rejected outright by claude.ai upload and the Skills API, which would have
   quietly made these Claude-Code-only.
