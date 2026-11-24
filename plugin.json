@@ -51,10 +51,10 @@
         "test_cases": {
           "positive": [
             {
-              "description": "Score one IP address and qualify the verdict with its coverage.",
+              "description": "Score one IP address and show the evidence behind the verdict.",
               "prompt": "Is 8.8.8.8 malicious? Show the evidence behind the verdict.",
               "tools_triggered": "explain_indicator",
-              "expected_behavior": "Calls explain_indicator and reports the verdict as assessed, with coverage known-clean and the allowlist advisory beside it. It names the sources behind the result and calls the address neither malicious nor safe."
+              "expected_behavior": "Calls explain_indicator and reports the verdict level and score with the sources behind it. It separates the listings that drive the score from the ones that do not, and does not call the address safe."
             },
             {
               "description": "Investigate one domain end to end, with cited evidence.",
